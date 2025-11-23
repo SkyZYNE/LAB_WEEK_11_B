@@ -1,0 +1,37 @@
+Nama: Raffael Valentino Gunawan
+NIM: 00000091170
+
+1) Kode yang menangani saat user mengambil gambar dan menyimpan ke MediaStore (fungsi insertToStore di ProviderFileManager.kt):
+
+private fun insertToStore(fileInfo: FileInfo, contentUri: Uri, contentValues: ContentValues) {
+    executor.execute {
+        val insertedUri = contentResolver.insert(contentUri, contentValues)
+        insertedUri?.let {
+            val inputStream = contentResolver.openInputStream(fileInfo.uri)
+            val outputStream = contentResolver.openOutputStream(insertedUri)
+            IOUtils.copy(inputStream, outputStream)
+        }
+    }
+}
+
+2) Penjelasan atribut FileInfo (5 atribut)
+- uri (atribut pertama): Merujuk pada URI yang menunjuk ke file sementara yang dibuat untuk kamera. URI ini biasanya dibuat oleh FileProvider sehingga kamera (aplikasi lain) dapat menulis hasil foto/video ke file yang dimiliki aplikasi kita. Contoh: hasil dari FileProvider.getUriForFile.
+- file (atribut kedua): Objek File yang merepresentasikan lokasi file di penyimpanan aplikasi (Contohnya di folder Android/data/.../files/Pictures).
+- name (atribut ketiga): Nama file yang akan dibuat/ditulis (Contohnya "img_123.jpg").
+- relativePath (atribut keempat): Merupakan path relatif yang digunakan ketika memindahkan/mendaftarkan file ke MediaStore pada Android Q+ (RELATIVE_PATH). Contohnya "Android/data/com.example.lab_week_11_b/files/Pictures" atau hanya nama folder seperti Environment.DIRECTORY_PICTURES. Ini menentukan folder tujuan keluaran di MediaStore sehingga file nanti muncul pada lokasi/album yang diinginkan.
+- mimeType (atribut kelima): Tipe MIME file, contohnya "image/jpeg" atau "video/mp4".
+
+3) [Bonus] Urutan kronologis (dari user menekan tombol sampai file tersimpan di MediaStore)
+1. User menekan tombol Photo di UI. Handler tombol memanggil checkStoragePermission dan jika diizinkan -> openImageCapture().
+2. openImageCapture() memanggil providerFileManager.generatePhotoUri(System.currentTimeMillis()) yang:
+   - membuat nama file (mis. img_<time>.jpg)
+   - membuat objek File yang menunjuk ke direktori aplikasi (getExternalFilesDir(...))
+   - membuat URI yang dapat di-grant ke camera app melalui FileProvider (FileHelper.getUriFromFile(file))
+   - membungkus semua info ini ke FileInfo (uri, file, name, relativePath, mimeType).
+3. MainActivity memanggil takePictureLauncher.launch(uri) dengan URI yang dihasilkan — ini membuka aplikasi kamera (external) dan memberi hak tulis ke URI sementara.
+4. Kamera menulis hasil foto ke URI yang diberikan (URI menunjuk ke file milik aplikasi kita di storage internal/external app-specific).
+5. Saat activity camera selesai, callback ActivityResultContracts.TakePicture() dipanggil di MainActivity. Callback tersebut memanggil providerFileManager.insertImageToStore(photoInfo).
+6. Di insertImageToStore -> insertToStore dipanggil dengan contentUri (MediaStore Images URI) dan ContentValues yang berisi DISPLAY_NAME, RELATIVE_PATH (jika Android Q+), MIME_TYPE.
+7. insertToStore melakukan contentResolver.insert(contentUri, contentValues) untuk membuat entry baru di MediaStore dan mendapatkan insertedUri (URI di MediaStore).
+8. Jika insertedUri tidak null, kode membuka inputStream dari file sumber (fileInfo.uri) dan outputStream ke insertedUri, lalu menyalin isi file (IOUtils.copy). Ini memindahkan / menyalin data dari file app-specific ke lokasi yang dikelola MediaStore sehingga file dapat terlihat oleh aplikasi Gallery dan app lain.
+9. Setelah proses copy selesai, file muncul di MediaStore (Gallery) dengan metadata yang sesuai.
